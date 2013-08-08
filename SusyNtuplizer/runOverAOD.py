@@ -98,11 +98,11 @@ def configure( dataset, sourceNames=[], hltPaths=[], maxEvents = -1, runNoPUMVAM
     elif dataset == '53x16Jan2013':
         process.GlobalTag.globaltag = 'FT_P_V43E_AN4::All'
     elif dataset == '53x22Jan2013':
-        process.GlobalTag.globaltag = 'FT_53_V21_AN4::All'
+        process.GlobalTag.globaltag = 'FT_53_V21_AN5::All'
     elif isMC and is52x:
         process.GlobalTag.globaltag = 'START52_V16::All'
     elif isMC and is53x:
-        process.GlobalTag.globaltag = 'START53_V25::All'
+        process.GlobalTag.globaltag = 'START53_V27::All'
 
     #####################
     ### SusyNtuplizer ###
