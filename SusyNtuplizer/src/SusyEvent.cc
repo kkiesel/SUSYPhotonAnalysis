@@ -104,7 +104,8 @@ susy::Particle::Print(std::ostream& os/* = std::cout*/) const
 void
 susy::Particle::fillRefs(Event const* _evt)
 {
-  mother = motherIndex != -1 ? &_evt->genParticles[motherIndex] : 0;
+  if(unsigned(motherIndex) < _evt->genParticles.size())
+    mother = &_evt->genParticles[motherIndex];
 }
 
 void
@@ -214,11 +215,14 @@ susy::SuperCluster::Print(std::ostream& os/* = std::cout*/) const
 void
 susy::SuperCluster::fillRefs(Event const* _evt)
 {
-  seedCluster = seedClusterIndex != -1 ? &_evt->clusters[seedClusterIndex] : 0;
+  if(unsigned(seedClusterIndex) < _evt->clusters.size())
+    seedCluster = &_evt->clusters[seedClusterIndex];
+
+  unsigned nC(_evt->clusters.size());
 
   basicClusters.assign(basicClusterIndices.size(), 0);
   for(unsigned iC(0); iC != basicClusterIndices.size(); ++iC)
-    basicClusters[iC] = &_evt->clusters[basicClusterIndices[iC]];
+    if(basicClusterIndices[iC] < nC) basicClusters[iC] = &_evt->clusters[basicClusterIndices[iC]];
 }
 
 void
@@ -268,7 +272,8 @@ susy::Track::Print(std::ostream& os/* = std::cout*/) const
 void
 susy::Track::fillRefs(Event const* _evt)
 {
-  assignedVertex = vertexIndex != -1 ? &_evt->vertices[vertexIndex] : 0;
+  if(unsigned(vertexIndex) < _evt->vertices.size())
+    assignedVertex = &_evt->vertices[vertexIndex];
 }
 
 void
@@ -356,6 +361,8 @@ susy::Photon::Init()
   convTrack2InnerY                = 0.;
   convTrack1Signedd0              = 0.;
   convTrack2Signedd0              = 0.;
+  convTrack1Index                 = -1;
+  convTrack2Index                 = -1;
 
   superClusterIndex               = -1;
   superClusterPreshowerEnergy     = 0;
@@ -370,6 +377,8 @@ susy::Photon::Init()
 
   superCluster = 0;
   worstOtherVtxChargedHadronIsoVtx = 0;
+  convTrack1 = 0;
+  convTrack2 = 0;
 }
 
 void
@@ -457,6 +466,8 @@ susy::Photon::Print(std::ostream& os/* = std::cout*/) const
   indent(os) << "convTrack2InnerY: " << convTrack2InnerY << std::endl;
   indent(os) << "convTrack1Signedd0: " << convTrack1Signedd0 << std::endl;
   indent(os) << "convTrack2Signedd0: " << convTrack2Signedd0 << std::endl;
+  indent(os) << "convTrack1Index" << convTrack1Index << std::endl;
+  indent(os) << "convTrack2Index" << convTrack2Index << std::endl;
   
   indent(os) << "superClusterIndex: " << superClusterIndex << std::endl;
   indent(os) << "superClusterPreshowerEnergy: " << superClusterPreshowerEnergy << std::endl;
@@ -473,9 +484,18 @@ susy::Photon::Print(std::ostream& os/* = std::cout*/) const
 void
 susy::Photon::fillRefs(Event const* _evt)
 {
-  superCluster = superClusterIndex != -1 ? &_evt->superClusters[superClusterIndex] : 0;
+  if(unsigned(superClusterIndex) < _evt->superClusters.size())
+    superCluster = &_evt->superClusters[superClusterIndex];
 
-  worstOtherVtxChargedHadronIsoVtx = worstOtherVtxChargedHadronIsoVtxIdx != -1 ? &_evt->vertices[worstOtherVtxChargedHadronIsoVtxIdx] : 0;
+  if(unsigned(worstOtherVtxChargedHadronIsoVtxIdx) < _evt->vertices.size())
+    worstOtherVtxChargedHadronIsoVtx = &_evt->vertices[worstOtherVtxChargedHadronIsoVtxIdx];
+
+  unsigned nT(_evt->tracks.size());
+
+  if(unsigned(convTrack1Index) < nT)
+    convTrack1 = &_evt->tracks[convTrack1Index];
+  if(unsigned(convTrack2Index) < nT)
+    convTrack2 = &_evt->tracks[convTrack2Index];
 }
 
 void
@@ -660,10 +680,16 @@ susy::Electron::Print(std::ostream& os/* = std::cout*/) const
 void
 susy::Electron::fillRefs(Event const* _evt)
 {
-  gsfTrack = gsfTrackIndex != -1 ? &_evt->tracks[gsfTrackIndex] : 0;
-  closestCtfTrack = closestCtfTrackIndex != -1 ? &_evt->tracks[closestCtfTrackIndex] : 0;
-  electronCluster = electronClusterIndex != -1 ? &_evt->clusters[electronClusterIndex] : 0;
-  superCluster = superClusterIndex != -1 ? &_evt->superClusters[superClusterIndex] : 0;
+  unsigned nT(_evt->tracks.size());
+
+  if(unsigned(gsfTrackIndex) < nT)
+    gsfTrack = &_evt->tracks[gsfTrackIndex];
+  if(unsigned(closestCtfTrackIndex) < nT)
+    closestCtfTrack = &_evt->tracks[closestCtfTrackIndex];
+  if(unsigned(electronClusterIndex) < _evt->clusters.size())
+    electronCluster = &_evt->clusters[electronClusterIndex];
+  if(unsigned(superClusterIndex) < _evt->superClusters.size())
+    superCluster = &_evt->superClusters[superClusterIndex];
 }
 
 void
@@ -798,14 +824,24 @@ susy::Muon::Print(std::ostream& os/* = std::cout*/) const
 void
 susy::Muon::fillRefs(Event const* _evt)
 {
-  innerTrack = trackIndex != -1 ? &_evt->tracks[trackIndex] : 0;
-  outerTrack = standAloneTrackIndex != -1 ? &_evt->tracks[standAloneTrackIndex] : 0;
-  globalTrack = combinedTrackIndex != -1 ? &_evt->tracks[combinedTrackIndex] : 0;
-  tpfmsTrack = tpfmsTrackIndex != -1 ? &_evt->tracks[tpfmsTrackIndex] : 0;
-  pickyTrack = pickyTrackIndex != -1 ? &_evt->tracks[pickyTrackIndex] : 0;
-  dytTrack = dytTrackIndex != -1 ? &_evt->tracks[dytTrackIndex] : 0;
-  bestTrack = bestTrackIndex() != -1 ? &_evt->tracks[bestTrackIndex()] : 0;
-  highPtBestTrack = highPtBestTrackIndex() != -1 ? &_evt->tracks[highPtBestTrackIndex()] : 0;
+  unsigned nT(_evt->tracks.size());
+
+  if(unsigned(trackIndex) < nT)
+    innerTrack = &_evt->tracks[trackIndex];
+  if(unsigned(standAloneTrackIndex) < nT)
+    outerTrack = &_evt->tracks[standAloneTrackIndex];
+  if(unsigned(combinedTrackIndex) < nT)
+    globalTrack = &_evt->tracks[combinedTrackIndex];
+  if(unsigned(tpfmsTrackIndex) < nT)
+    tpfmsTrack = &_evt->tracks[tpfmsTrackIndex];
+  if(unsigned(pickyTrackIndex) < nT)
+    pickyTrack = &_evt->tracks[pickyTrackIndex];
+  if(unsigned(dytTrackIndex) < nT)
+    dytTrack = &_evt->tracks[dytTrackIndex];
+  if(unsigned(bestTrackIndex()) < nT)
+    bestTrack = &_evt->tracks[bestTrackIndex()];
+  if(unsigned(highPtBestTrackIndex()) < nT)
+    highPtBestTrack = &_evt->tracks[highPtBestTrackIndex()];
 }
 
 void
@@ -1050,13 +1086,16 @@ susy::PFJet::Print(std::ostream& os/* = std::cout*/) const
 void
 susy::PFJet::fillRefs(Event const* _evt)
 {
+  unsigned nT(_evt->tracks.size());
+  unsigned nP(_evt->pfParticles.size());
+
   tracks.assign(tracklist.size(), 0);
   for(unsigned iT(0); iT != tracklist.size(); ++iT)
-    tracks[iT] = &_evt->tracks[tracklist[iT]];
+    if(tracklist[iT] < nT) tracks[iT] = &_evt->tracks[tracklist[iT]];
 
   pfParticles.assign(pfParticleList.size(), 0);
   for(unsigned iP(0); iP != pfParticleList.size(); ++iP)
-    pfParticles[iP] = &_evt->pfParticles[pfParticleList[iP]];
+    if(pfParticleList[iP] < nP) pfParticles[iP] = &_evt->pfParticles[pfParticleList[iP]];
 }
 
 void
@@ -1164,7 +1203,7 @@ susy::TriggerMap::pass(TString const& _path) const
 
   TString const& found(itr->first);
 
-  if((_path.First('*') == _path.Length() - 1 && found.Index(_path.SubString(0, _path.Length() - 1)) == 0) || _path == found)
+  if((_path.First('*') == _path.Length() - 1 && found.Index(_path(0, _path.Length() - 1)) == 0) || _path == found)
     return *itr->second.second != 0;
   else
     return kFALSE;
