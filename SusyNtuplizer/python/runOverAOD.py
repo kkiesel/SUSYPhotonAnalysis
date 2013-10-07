@@ -1,4 +1,5 @@
 def configure( dataset, sourceNames=[], hltPaths=[], maxEvents = -1, runNoPUMVAMetSequence=False ):
+    maxEvents = 1
     """ This is the main routine used to configure the nTuplizer. Please check
     the correctness of all relevant default parameters.
 
@@ -361,6 +362,15 @@ def configure( dataset, sourceNames=[], hltPaths=[], maxEvents = -1, runNoPUMVAM
         process.pfSysShiftCorrectedMet +
         process.pfType01SysShiftCorrectedMet
     )
+
+    if isFastSim and is52x:
+        process.correctedMetSequence = cms.Sequence(
+            process.produceCaloMETCorrections +
+            process.pfCandidateToVertexAssoc +
+            process.pfType0MetCorrection +
+            process.pfMEtSysShiftCorr +
+            process.pfSysShiftCorrectedMet
+        )
 
     #############################
     ### MVA-based electron ID ###
