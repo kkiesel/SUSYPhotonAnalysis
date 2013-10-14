@@ -27,7 +27,7 @@ opt.register(
     VarParsing.VarParsing.varType.string,
     "Please choose a hltPath token. For examples see config file."
 )
-
+opt.outputFile = "susyEvents.root"
 opt.parseArguments()
 
 process = configure(dataset = opt.dataset, sourceNames = opt.inputFiles, hltPaths = opt.hltPaths, maxEvents = opt.maxEvents, outputName = opt.outputFile)
