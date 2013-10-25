@@ -34,7 +34,8 @@ def configure( dataset, sourceNames=[], hltPaths=[], maxEvents = -1, outputName 
     is52x = '52x' in dataset
 
     if not isRealData and not isMC:
-        raise RuntimeError("Dataset " + dataset + " not defined")
+        raise RuntimeError( "Dataset " + dataset + " not defined. Please choose from "
+            + str(collisionDatasets).strip("[]") + " or " + str(mcDatasets).strip("[]") )
 
     import FWCore.ParameterSet.Config as cms
 
