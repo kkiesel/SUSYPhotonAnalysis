@@ -223,6 +223,7 @@ private:
   std::string pfPUCandidatesTag_;
   std::string photonSCRegressionWeights_;
   std::map<unsigned, std::string> metFilterTags_;
+  std::set<std::string> hltFilterTags_;
 
   // for HLT prescales
   HLTConfigProvider* hltConfig_;
@@ -342,6 +343,7 @@ SusyNtuplizer::SusyNtuplizer(const edm::ParameterSet& iConfig) :
   pfPUCandidatesTag_(iConfig.getParameter<std::string>("pfPUCandidatesTag")),
   photonSCRegressionWeights_(iConfig.getParameter<edm::FileInPath>("photonSCRegressionWeights").fullPath()),
   metFilterTags_(),
+  hltFilterTags_(),
   hltConfig_(0),
   l1GtUtils_(0),
   isolator03_(0),
@@ -551,7 +553,7 @@ SusyNtuplizer::SusyNtuplizer(const edm::ParameterSet& iConfig) :
 
   outF->cd();    
   susyTree_ = new TTree("susyTree", "SUSY Event");
-  susyTree_->SetAutoSave(10000000); // 10MB
+  susyTree_->SetAutoSave(10000000); // 10M events
 
   /*
     Construct an Event object and tell it what collections it should expect.
@@ -602,18 +604,22 @@ SusyNtuplizer::SusyNtuplizer(const edm::ParameterSet& iConfig) :
     else if(metFilterNames[iF] == "HcalNoise") bitPosition = susy::kHcalNoise;
     else if(metFilterNames[iF] == "EcalDeadCellTP") bitPosition = susy::kEcalDeadCellTP;
     else if(metFilterNames[iF] == "EcalDeadCellBE") bitPosition = susy::kEcalDeadCellBE;
-    else if(metFilterNames[iF] == "HcalLaserOccupancy") bitPosition = susy::kHcalLaserOccupancy;
     else if(metFilterNames[iF] == "TrackingFailure") bitPosition = susy::kTrackingFailure;
     else if(metFilterNames[iF] == "EEBadSC") bitPosition = susy::kEEBadSC;
+    else if(metFilterNames[iF] == "HcalLaserOccupancy") bitPosition = susy::kHcalLaserOccupancy;
     else if(metFilterNames[iF] == "HcalLaserEventList") bitPosition = susy::kHcalLaserEventList;
+    else if(metFilterNames[iF] == "HcalLaserRECOUserStep") bitPosition = susy::kHcalLaserRECOUserStep;
     else if(metFilterNames[iF] == "EcalLaserCorr") bitPosition = susy::kEcalLaserCorr;
     else if(metFilterNames[iF] == "ManyStripClus53X") bitPosition = susy::kManyStripClus53X;
     else if(metFilterNames[iF] == "TooManyStripClus53X") bitPosition = susy::kTooManyStripClus53X;
     else if(metFilterNames[iF] == "LogErrorTooManyClusters") bitPosition = susy::kLogErrorTooManyClusters;
+    else if(metFilterNames[iF] == "LogErrorTooManyTripletsPairs") bitPosition = susy::kLogErrorTooManyTripletsPairs;
+    else if(metFilterNames[iF] == "LogErrorTooManySeeds") bitPosition = susy::kLogErrorTooManySeeds;
     else if(metFilterNames[iF] == "EERingOfFire") bitPosition = susy::kEERingOfFire;
     else if(metFilterNames[iF] == "InconsistentMuon") bitPosition = susy::kInconsistentMuon;
     else if(metFilterNames[iF] == "GreedyMuon") bitPosition = susy::kGreedyMuon;
-    else if(metFilterNames[iF] == "HcalLaserRECOUserStep") bitPosition = susy::kHcalLaserRECOUserStep;
+    else
+      throw cms::Exception("ConfigError") << "Undefined MET filter " << metFilterNames[iF];
 
     metFilterTags_[bitPosition] = filterConfig.getParameter<std::string>("tag");
     if(filterConfig.getParameter<bool>("default")) susyEvent_->metFilterMask |= (1 << bitPosition);
@@ -638,6 +644,9 @@ SusyNtuplizer::SusyNtuplizer(const edm::ParameterSet& iConfig) :
     Create a trigger tree if configured.
   */
   if(storeTriggerEvents_){
+    VString hltFiltersList(iConfig.getParameter<VString>("hltFilterTags"));
+    hltFilterTags_.insert(hltFiltersList.begin(), hltFiltersList.end());
+
     TString triggerFileName(iConfig.getParameter<std::string>("triggerFileName"));
 
     triggerEvent_ = new susy::TriggerEvent;
@@ -1239,156 +1248,223 @@ SusyNtuplizer::fillGenParticles(edm::Event const& _event, edm::EventSetup const&
 
   // Store the skimmed full decay tree
   // Only the ancestors of final state (status == 1) particles with pt > genParticleThreshold will be stored
-  // Pruning removes intermediate light-flavor hadrons (particles with non-zero third digit, gluon,
-  // light quark decaying from another light quark, and pythia blob) unless:
+  // Pruning removes intermediate light-flavor hadrons (particles with non-zero third (counting from lower) digit, gluon,
+  // and pythia blob) unless:
+  //  - It is status 3
   //  - It is a first heavy-flavor to appear in the decay branch
   //  - It is the direct mother of a final-state non-hadronic particle
+  // Additionally, particle whose only child has the identical PDG ID and identical status will be removed.
   // In case of loops (a particle has multiple mothers), arbitration based on the particle species and Pt is performed
   // Anonymous struct is used extensively in this function for recursions
   // Use lambda for release with C++11
 
   if(debugLevel_ > 0) edm::LogInfo(name()) << "fillGenParticles";
 
-  edm::Handle<reco::GenParticleCollection> gpH;
-  _event.getByLabel(edm::InputTag(genCollectionTag_), gpH);
+  struct PNode {
+    typedef std::list<PNode*> PtrList;
 
-  typedef std::map<reco::GenParticle const*, reco::GenParticle const*> PartToPart;
-  typedef std::list<reco::GenParticle const*> List;
-  typedef std::map<reco::GenParticle const*, List> PartToList;
+    reco::GenParticle const* particle;
+    PNode* mother;
+    PtrList daughters;
 
-  PartToPart motherMap;
-  PartToList daughterMap;
+    PNode() : particle(0), mother(0), daughters() {}
+    PNode(reco::GenParticle const& _p) : particle(&_p), mother(0), daughters() {}
+    PNode(PNode const& _orig) : particle(_orig.particle), mother(_orig.mother), daughters(_orig.daughters) {}
+    ~PNode() {}
+    PNode& operator=(PNode const& _rhs)
+    {
+      particle = _rhs.particle;
+      mother = _rhs.mother;
+      daughters = _rhs.daughters;
+      return *this;
+    }
+    bool operator==(PNode const& _rhs) const { return _rhs.particle == particle; }
+    bool operator==(reco::GenParticle const& _rhs) const { return &_rhs == particle; }
+    bool operator!=(PNode const& _rhs) const { return !operator==(_rhs); }
+    bool operator!=(reco::GenParticle const& _rhs) const { return !operator==(_rhs); }
+    void invalidate()
+    {
+      for(PtrList::iterator dItr(daughters.begin()); dItr != daughters.end(); ++dItr)
+        (*dItr)->mother = mother;
+
+      if(mother){
+        PtrList& siblings(mother->daughters);
+        PtrList::iterator myPosition(std::find(siblings.begin(), siblings.end(), this));
+        siblings.splice(myPosition, daughters);
+        siblings.erase(myPosition);
+      }
+
+      particle = 0;
+    }
+  };
+
+  typedef std::vector<PNode> NodeList;
 
   struct {
-    bool operator() (reco::GenParticle const& _part, double _threshold)
+    double threshold;
+    bool operator()(reco::GenParticle const& _part)
     {
       return
-        (_part.status() == 1 && _part.pt() < _threshold) ||
+        (_part.status() == 1 && _part.pt() < threshold) ||
         (_part.status() != 1 && _part.numberOfDaughters() == 0);
     }
   } isInvalid;
 
-  List rootNodes;
+  struct NonHadronID {
+    bool operator()(unsigned _pdg)
+    {
+      return
+        (_pdg / 100) % 10 == 0 && // meson / baryon
+        _pdg != 21 && // gluon
+        !(_pdg > 80 && _pdg < 101); // pythia blob
+    }
+  } isNonHadronic;
+
+  isInvalid.threshold = genParticleThreshold_;
+
+  edm::Handle<reco::GenParticleCollection> gpH;
+  _event.getByLabel(edm::InputTag(genCollectionTag_), gpH);
+
+  NodeList nodeList(gpH->size());
+  PNode::PtrList rootNodes;
+
+  NodeList::iterator listEnd(nodeList.begin());
+
   for(reco::GenParticleCollection::const_iterator gItr(gpH->begin()); gItr != gpH->end(); ++gItr){
-    if(isInvalid(*gItr, genParticleThreshold_)) continue;
+    if(isInvalid(*gItr)) continue;
 
     reco::GenParticle const& part(*gItr);
 
-    if(part.numberOfMothers() == 0){
-      rootNodes.push_back(&part);
-      motherMap[&part] = 0;
+    PNode* node(0);
+
+    NodeList::iterator nItr(std::find(nodeList.begin(), listEnd, part));
+    if(nItr != listEnd)
+      node = &*nItr;
+    else{
+      node = &*(listEnd++);
+      node->particle = &part;
+
+      if(part.numberOfMothers() == 0)
+        rootNodes.push_back(node);
     }
 
     unsigned nD(part.numberOfDaughters());
     for(unsigned iD(0); iD < nD; iD++){
-      reco::GenParticle const* daughter(static_cast<reco::GenParticle const*>(part.daughter(iD)));
-      if(isInvalid(*daughter, genParticleThreshold_)) continue;
+      reco::GenParticle const& daughter(static_cast<reco::GenParticle const&>(*part.daughter(iD)));
+      if(&daughter == &part || isInvalid(daughter)) continue;
 
-      if(motherMap.find(daughter) != motherMap.end()){
-        // the daughter is claimed by some other mother - arbtrate
-        reco::GenParticle const* existing(motherMap[daughter]);
+      PNode* dNode(0);
 
-        int thispdg(std::abs(part.pdgId()));
-        bool thishad((thispdg / 100) % 10 != 0 || thispdg == 21 || (thispdg > 80 && thispdg < 101));
-        int pdg(std::abs(existing->pdgId()));
-        bool had((pdg / 100) % 10 != 0 || pdg == 21 || (pdg > 80 && pdg < 101));
+      NodeList::iterator dItr(std::find(nodeList.begin(), listEnd, daughter));
+      if(dItr != listEnd){
+        dNode = &*dItr;
 
-        bool takeAway(false);
-        if((thishad && had) || (!thishad && !had))
-          takeAway = part.pt() > existing->pt();
-        else if(!thishad && had)
-          takeAway = true;
+        if(dNode->mother && dNode->mother != node){
+          // The daughter is claimed by some other mother - arbtrate
+          reco::GenParticle const& existing(*dNode->mother->particle);
 
-        if(!takeAway) continue;
+          bool thisIsNonHadronic(isNonHadronic(std::abs(part.pdgId())));
+          bool otherIsNonHadronic(isNonHadronic(std::abs(existing.pdgId())));
 
-        daughterMap[existing].remove(daughter);
+          bool adopt(false);
+          if((thisIsNonHadronic && otherIsNonHadronic) || (!thisIsNonHadronic && !otherIsNonHadronic))
+            adopt = part.pt() > existing.pt();
+          else if(thisIsNonHadronic && !otherIsNonHadronic)
+            adopt = true;
+
+          if(!adopt) continue;
+
+          PNode::PtrList& currentSiblings(dNode->mother->daughters);
+          currentSiblings.erase(std::find(currentSiblings.begin(), currentSiblings.end(), dNode));
+        }
+      }
+      else{
+        dNode = &*(listEnd++);
+        dNode->particle = &daughter;
       }
 
-      motherMap[daughter] = &part;
-      daughterMap[&part].push_back(daughter);
+      dNode->mother = node;
+      node->daughters.push_back(dNode);
     }
   }
 
   struct {
-    struct {
-      bool operator() (unsigned _pdg) { return (_pdg / 100) % 10 != 0 || _pdg == 21 || (_pdg > 80 && _pdg < 101); }
-    } isHadronic;
-
-    void operator() (List& _list, PartToPart& _motherMap, PartToList& _daughterMap)
+    void operator()(PNode::PtrList& _list)
     {
-      List::iterator lItr(_list.begin());
-      while(lItr != _list.end()){
-        List& daughters(_daughterMap[*lItr]);
-        this->operator()(daughters, _motherMap, _daughterMap);
+      NonHadronID isNonHadronic;
 
-        reco::GenParticle const& part(**lItr);
-        reco::GenParticle const* mother(_motherMap[&part]);
+      PNode::PtrList::iterator pItr(_list.begin());
+      while(pItr != _list.end()){
+        PNode& node(**pItr);
 
-        unsigned pdg(std::abs(part.pdgId()));
-        unsigned motherPdg(mother ? std::abs(mother->pdgId()) : 0);
+        ++pItr;
 
-        bool intermediateTerminal(daughters.size() == 0 && part.status() != 1);
-        bool lightFromLight(motherPdg < 4 && pdg < 4);
+        PNode::PtrList& daughters(node.daughters);
 
-        bool hadronicIntermediate(false);
-        if(!intermediateTerminal && !lightFromLight){
-          hadronicIntermediate = mother && part.status() != 1 && isHadronic(pdg);
-          if(hadronicIntermediate){
-            if((motherPdg / 1000) % 10 < 4 && (motherPdg / 100) % 10 < 4 && ((pdg / 1000) % 10 >= 4 || (pdg / 100) % 10 >= 4))
-              // first heavy flavor
-              hadronicIntermediate = false;
-            else{
-              List::iterator dItr(daughters.begin());
-              for(; dItr != daughters.end(); ++dItr)
-                if((*dItr)->status() == 1 && !isHadronic(std::abs((*dItr)->pdgId()))) break;
-              if(dItr != daughters.end()) hadronicIntermediate = false;
-            }
-          }
+        this->operator()(daughters);
+
+        reco::GenParticle const& particle(*node.particle);
+
+        int status(particle.status());
+
+        if(daughters.size() == 0 && status != 1){
+          // Non-final state particle without daughters. Remove
+          node.invalidate();
+          continue;
         }
 
-        if(intermediateTerminal || hadronicIntermediate || lightFromLight){
-          // This particle should be removed, its daughters appended to its siblings list, and their mothers set to the particle's mother
-
-          for(List::iterator dItr(daughters.begin()); dItr != daughters.end(); ++dItr){
-            _list.push_back(*dItr);
-            _motherMap[*dItr] = mother;
-          }
-
-          lItr = _list.erase(lItr);
-          _daughterMap.erase(&part);
-          _motherMap.erase(&part);
+        if(daughters.size() == 1 &&
+           particle.pdgId() == daughters.front()->particle->pdgId() &&
+           particle.status() == daughters.front()->particle->status()){
+          // Daughter carries identical information to this node. Remove
+          node.invalidate();
+          continue;
         }
-        else
-          ++lItr;
+
+        unsigned pdg(std::abs(particle.pdgId()));
+        PNode* mother(node.mother);
+
+        if(!mother || isNonHadronic(pdg) || status == 1 || status == 3) // Interesting particle. Keep
+          continue;
+
+        // Remaining particles are intermediate (status 2 with mother and daughters) hadronic
+
+        unsigned motherPdg(std::abs(mother->particle->pdgId()));
+
+        if((motherPdg / 1000) % 10 < 4 && (motherPdg / 100) % 10 < 4 && ((pdg / 1000) % 10 >= 4 || (pdg / 100) % 10 >= 4)) // First heavy flavor hadron in the chain. Keep
+          continue;
+
+        PNode::PtrList::iterator dItr(daughters.begin());
+        for(; dItr != daughters.end(); ++dItr){
+          reco::GenParticle const& daughter(*(*dItr)->particle);
+          if(daughter.status() == 1 && isNonHadronic(std::abs(daughter.pdgId()))) break;
+        }
+        if(dItr != daughters.end()) // Direct mother of a non-hadronic final state. Keep
+          continue;
+
+        node.invalidate();
       }
     }
   } pruneDecayTree;
 
-  pruneDecayTree(rootNodes, motherMap, daughterMap);
+  pruneDecayTree(rootNodes);
 
-  struct {
-    void operator() (List& _list, PartToList& _daughterMap, std::vector<reco::GenParticle const*>& _particles)
-    {
-      for(List::iterator lItr(_list.begin()); lItr != _list.end(); ++lItr){
-        _particles.push_back(*lItr);
-        this->operator()(_daughterMap[*lItr], _daughterMap, _particles);
-      }
-    }
-  } linearize;
+  std::map<PNode*, short> indices;
+  for(NodeList::iterator nItr(nodeList.begin()); nItr != listEnd; ++nItr)
+    if(nItr->particle) indices[&*nItr] = indices.size() - 1;
 
-  std::vector<reco::GenParticle const*> particles;
+  for(NodeList::iterator nItr(nodeList.begin()); nItr != listEnd; ++nItr){
+    if(!nItr->particle) continue;
 
-  linearize(rootNodes, daughterMap, particles);
+    PNode& node(*nItr);
 
-  for(unsigned iP(0); iP != particles.size(); ++iP){
-    reco::GenParticle const& part(*particles[iP]);
+    reco::GenParticle const& part(*node.particle);
     susy::Particle susyPart;
 
-    std::vector<reco::GenParticle const*>::iterator mItr(std::find(particles.begin(), particles.end(), motherMap[&part]));
-    if(mItr == particles.end()) 
+    if(!node.mother) 
       susyPart.motherIndex = -1;
     else
-      susyPart.motherIndex = short(mItr - particles.begin());
+      susyPart.motherIndex = indices[node.mother];
     susyPart.status = part.status();
     susyPart.pdgId = part.pdgId();
     susyPart.charge = part.charge();
@@ -1413,17 +1489,27 @@ SusyNtuplizer::fillTriggerEvent(edm::Event const& _event, edm::EventSetup const&
     _event.getByLabel(triggerEventTag_, teH);
 
     trigger::TriggerObjectCollection const& objects(teH->getObjects());
-    unsigned nObj(objects.size());
-    for(unsigned iObj(0); iObj < nObj; ++iObj){
-      trigger::TriggerObject const& obj(objects.at(iObj));
-      triggerEvent_->fillObject(susy::TriggerObject(obj.pt(), obj.eta(), obj.phi(), obj.mass()));
-    }
+
+    std::map<unsigned short, unsigned short> keyMap; // key used in CMSSW -> key used in ntuples
 
     unsigned nF(teH->sizeFilters());
     for(unsigned iF(0); iF < nF; ++iF){
-      trigger::Vids const& vids(teH->filterIds(iF));
+      if(hltFilterTags_.size() != 0 && hltFilterTags_.find(teH->filterTag(iF).label()) == hltFilterTags_.end()) continue;
+
       trigger::Keys const& keys(teH->filterKeys(iF));
-      triggerEvent_->fillFilter(teH->filterTag(iF).label(), vids, keys);
+
+      for(unsigned iK(0); iK != keys.size(); ++iK){
+        unsigned short key(keys[iK]);
+
+        if(keyMap.find(key) != keyMap.end()) continue;
+
+        trigger::TriggerObject const& obj(objects.at(key));
+        triggerEvent_->fillObject(susy::TriggerObject(obj.pt(), obj.eta(), obj.phi(), obj.mass()));
+
+        keyMap[key] = keyMap.size() - 1; // operator[] already increments the map size before the RHS is evaluated
+      }
+
+      triggerEvent_->fillFilter(teH->filterTag(iF).label(), teH->filterIds(iF), keys, keyMap);
     }
   }
   catch(...){

@@ -153,6 +153,9 @@ namespace susy {
   void
   TriggerEvent::fillObject(TriggerObject const& _obj)
   {
+    // must be called right after fillFilter
+    // better implementationally if this was a part of fillFilter, but we don't want CMSSW dependence in this code
+
     if(!writeMode_){
       if(verbosity_ > 0) std::cerr << "susy::TriggerEvent::fillFilter: Not in write mode" << std::endl;
       return;
@@ -163,16 +166,16 @@ namespace susy {
   }
 
   void
-  TriggerEvent::fillFilter(TString const& _filterName, std::vector<Int_t> const& _vids, std::vector<UShort_t> const& _keys)
+  TriggerEvent::fillFilter(TString const& _filterName, std::vector<Int_t> const& _vids, std::vector<UShort_t> const& _keys, std::map<UShort_t, UShort_t> const& _keyMap)
   {
     if(!writeMode_){
       if(verbosity_ > 0) std::cerr << "susy::TriggerEvent::fillFilter: Not in write mode" << std::endl;
       return;
     }
 
-    UInt_t nKey(_keys.size());
-    if(nKey == 0){
-      if(verbosity_ > 1) std::cerr << "susy::TriggerEvent::fillFilter: Key vector size is 0 for filter " << _filterName << std::endl;
+    UInt_t nVid(_vids.size());
+    if(nVid == 0){
+      if(verbosity_ > 1) std::cerr << "susy::TriggerEvent::fillFilter: Vid vector size is 0 for filter " << _filterName << std::endl;
       return;
     }
 
@@ -185,13 +188,15 @@ namespace susy {
       filter_.id = fItr->second;
 
     filter_.filterObjectBegin = filterObjectTree_->GetEntries();
-    filter_.filterObjectEnd = filterObjectTree_->GetEntries() + nKey;
+    filter_.filterObjectEnd = filterObjectTree_->GetEntries() + nVid;
 
     filterTree_->Fill();
 
-    for(UInt_t iKey(0); iKey != nKey; ++iKey){
-      filterObject_.vid = _vids[iKey];
-      filterObject_.key = _keys[iKey];
+    // key must exist in keymap
+
+    for(UInt_t iVid(0); iVid != nVid; ++iVid){
+      filterObject_.vid = _vids[iVid];
+      filterObject_.key = _keyMap.find(_keys[iVid])->second;
       filterObjectTree_->Fill();
     }
 
@@ -200,8 +205,8 @@ namespace susy {
                 << " ID " << filter_.id << " FilterObjectIndices " << filter_.filterObjectBegin << "-" << filter_.filterObjectEnd << std::endl;
       if(verbosity_ > 3){
         std::cerr << " FilterObjects:" << std::endl;
-        for(UInt_t iKey(0); iKey < nKey; ++iKey)
-          std::cerr << "  vid=" << _vids[iKey] << ", key=" << _keys[iKey] << std::endl;
+        for(UInt_t iVid(0); iVid < nVid; ++iVid)
+          std::cerr << "  vid=" << _vids[iVid] << ", key=" << _keyMap.find(_keys[iVid])->second << std::endl;
       }
     }
   }
@@ -238,8 +243,7 @@ namespace susy {
     TFile* eventFile(eventTree_->GetCurrentFile());
     eventFile->cd();
     eventTree_->Write();
-    delete eventTree_;
-    eventTree_ = 0;
+    // eventTree and the file will be deleted in reset() at the end of this function
 
     if(verbosity_ > 1) std::cerr << "susy::TriggerEvent::write: Writing filters" << std::endl;
 
@@ -369,17 +373,17 @@ namespace susy {
     reset();
   }
 
-  void
+  bool
   TriggerEvent::copyEvent(TriggerEvent& _orig)
   {
     if(!writeMode_){
       if(verbosity_ > 0) std::cerr << "susy::TriggerEvent::copyEvent: Not in write mode" << std::endl;
-      return;
+      return false;
     }
 
     if(_orig.currentTreeNumber_ != _orig.eventTree_->GetTreeNumber() && !_orig.loadTrees()){
       if(verbosity_ > 0) std::cerr << "susy::TriggerEvent::copyEvent: File transition failed" << std::endl;
-      return;
+      return false;
     }
 
     event_.runNumber = _orig.event_.runNumber;
@@ -390,7 +394,7 @@ namespace susy {
     Long64_t objectIndex(_orig.event_.objectBegin);
     while(objectIndex != _orig.event_.objectEnd && _orig.objectTree_->GetEntry(objectIndex++) != 0){
       object_ = _orig.object_;
-      objectTree_->Fill();
+      if(objectTree_->Fill() < 0) return false;
     }
 
     event_.objectEnd = objectTree_->GetEntries();
@@ -419,23 +423,26 @@ namespace susy {
       Long64_t filterObjectIndex(_orig.filter_.filterObjectBegin);
       while(filterObjectIndex != _orig.filter_.filterObjectEnd && _orig.filterObjectTree_->GetEntry(filterObjectIndex++) != 0){
 	filterObject_ = _orig.filterObject_;
-	filterObjectTree_->Fill();
+	if(filterObjectTree_->Fill() < 0) return false;
       }
 
       filter_.filterObjectEnd = filterObjectTree_->GetEntries();
 
-      filterTree_->Fill();
+      if(filterTree_->Fill() < 0) return false;
     }
 
     event_.filterEnd = filterTree_->GetEntries();
 
-    eventTree_->Fill();
+    return eventTree_->Fill() >= 0;
   }
 
   void
   TriggerEvent::reset()
   {
-    if(susyTree_ && susyTree_->GetFriend("triggerEvent") == eventTree_) susyTree_->RemoveFriend(eventTree_);
+    if(susyTree_ && susyTree_->GetFriend("triggerEvent") == eventTree_){
+      susyTree_->RemoveFriend(eventTree_);
+      if(susyTree_->InheritsFrom(TChain::Class())) susyTree_->LoadTree(susyTree_->GetReadEntry());
+    }
 
     susyTree_ = 0;
     ordered_ = kTRUE;
@@ -583,6 +590,8 @@ namespace susy {
       return result;
     }
 
+    if(_filter == "") return result;
+
     std::map<TString, UShort_t>::const_iterator idItr(filterIdMap_.find(_filter));
     if(idItr == filterIdMap_.end()){
       if(verbosity_ > 0) std::cerr << "susy::TriggerEvent::getFilterObjects: Filter " << _filter << " not found in table" << std::endl;
@@ -644,6 +653,25 @@ namespace susy {
       if(filterObjects[iObj].deltaR(_momentum) < _dR) return kTRUE;
 
     return kFALSE;
+  }
+
+  void
+  TriggerEvent::Print(std::ostream& os/* = std::cout*/)
+  {
+    getFilterObjects(""); // initialize read
+
+    os << "Trigger Event ======>" << std::endl;
+    for(std::map<TString, UShort_t>::const_iterator fItr(filterIdMap_.begin()); fItr != filterIdMap_.end(); ++fItr){
+      TriggerObjectCollection filterObjects(getFilterObjects(fItr->first));
+      if(filterObjects.size() == 0) continue;
+      os << "\t" << fItr->first << ": ";
+      for(unsigned iO(0); iO != filterObjects.size(); ++iO){
+        TriggerObject& obj(filterObjects[iO]);
+        os << "(" << obj.pt << "," << obj.eta << "," << obj.phi << "," << obj.mass << ")[" << obj.vid << "] ";
+      }
+      os << std::endl;
+    }
+    os << std::endl;
   }
 
   Bool_t

@@ -178,12 +178,12 @@ susyNtuplizer = cms.EDAnalyzer('SusyNtuplizer',
         ManyStripClus53X = cms.PSet(
             tag = cms.string("manystripclus53X"),
             run = cms.bool(True),
-            default = cms.bool(False)
+            default = cms.bool(True)
         ),
         TooManyStripClus53X = cms.PSet(
             tag = cms.string("toomanystripclus53X"),
             run = cms.bool(True),
-            default = cms.bool(False)
+            default = cms.bool(True)
         ),
         LogErrorTooManyClusters = cms.PSet(
             tag = cms.string("logErrorTooManyClusters"),
@@ -193,12 +193,12 @@ susyNtuplizer = cms.EDAnalyzer('SusyNtuplizer',
         LogErrorTooManyTripletsPairs = cms.PSet(
             tag = cms.string("logErrorTooManyTripletsPairs"),
             run = cms.bool(True),
-            default = cms.bool(True)
+            default = cms.bool(False)
         ),
         LogErrorTooManySeeds = cms.PSet(
             tag = cms.string("logErrorTooManySeeds"),
             run = cms.bool(True),
-            default = cms.bool(True)
+            default = cms.bool(False)
         ),
         EERingOfFire = cms.PSet(
             tag = cms.string("eeNoiseFilter"),
@@ -216,6 +216,7 @@ susyNtuplizer = cms.EDAnalyzer('SusyNtuplizer',
             default = cms.bool(False)
         )
     ),
+    hltFilterTags = cms.vstring(),
     photonSCRegressionWeights = cms.FileInPath("SUSYPhotonAnalysis/SusyNtuplizer/data/gbrv3ph_52x.root"),
     muonThreshold = cms.double(2.0),
     electronThreshold = cms.double(2.0),
