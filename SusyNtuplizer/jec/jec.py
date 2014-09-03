@@ -1,9 +1,9 @@
 import FWCore.ParameterSet.Config as cms
 
-globalTag = 'FT_53_V21_AN3'
+globalTag = 'FT_53_V21_AN5'
 
 # PF, Calo, or JPT
-jetType = 'PF'
+jetType = 'PFchs'
 
 process = cms.Process("RA3")
 
