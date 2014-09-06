@@ -1565,6 +1565,8 @@ susy::Event::Init()
   for(PFJetCollectionMap::iterator itr(pfJets.begin()); itr != pfJets.end(); ++itr) itr->second.clear();
   for(JPTJetCollectionMap::iterator itr(jptJets.begin()); itr != jptJets.end(); ++itr) itr->second.clear();
   for(std::map<TString, Float_t>::iterator itr(gridParams.begin()); itr != gridParams.end(); ++itr) itr->second = 0.;
+  gridParamStr.clear();
+  pdfWeights.clear();
 }
 
 void
@@ -1800,6 +1802,9 @@ susy::Event::setInput(TTree& _tree)
   if(_tree.GetBranchStatus("pfParticles")) _tree.SetBranchAddress("pfParticles", new PFParticleCollection*(&pfParticles));
   if(_tree.GetBranchStatus("pu")) _tree.SetBranchAddress("pu", new PUSummaryInfoCollection*(&pu));
   if(_tree.GetBranchStatus("genParticles")) _tree.SetBranchAddress("genParticles", new ParticleCollection*(&genParticles));
+  if(_tree.GetBranchStatus("gridParamStr")) _tree.SetBranchAddress("gridParamStr", new std::vector<std::string>*(&gridParamStr));
+  if(_tree.GetBranchStatus("pdfWeights")) _tree.SetBranchAddress("pdfWeights", new std::map<TString, std::vector<double> >*(&pdfWeights));
+
 
   metMap.clear();
   muons.clear();
@@ -1809,6 +1814,8 @@ susy::Event::setInput(TTree& _tree)
   pfJets.clear();
   jptJets.clear();
   gridParams.clear();
+  gridParamStr.clear();
+  pdfWeights.clear();
 
   TObjArray* branches(_tree.GetListOfBranches());
 
@@ -1940,6 +1947,12 @@ susy::Event::addOutput(TTree& _tree)
     if(_tree.GetBranch("gridParams_" + itr->first)) _tree.SetBranchAddress("gridParams_" + itr->first, &itr->second);
     else _tree.Branch("gridParams_" + itr->first, &itr->second, itr->first + "/F");
   }
+
+  if(_tree.GetBranch("gridParamStr")) _tree.SetBranchAddress("gridParamStr", new std::vector<std::string>*(&gridParamStr));
+  else _tree.Branch("gridParamStr", "std::vector<std::string>", new std::vector<std::string>*(&gridParamStr));
+
+  if(_tree.GetBranch("pdfWeights")) _tree.SetBranchAddress("pdfWeights", new std::map<TString, std::vector<double> >*(&pdfWeights));
+  else _tree.Branch("pdfWeights", "std::map<TString, std::vector<double> >", new std::map<TString, std::vector<double> >*(&pdfWeights));
 
   outputTrees_.push_back(&_tree);
   hltMap.addOutput(_tree);
@@ -2126,6 +2139,9 @@ susy::Event::copyEvent(Event const& _orig)
     gridParams[oItr->first] = oItr->second;
   for(std::map<TString, Float_t>::iterator itr(gridParams.begin()); itr != gridParams.end(); ++itr)
     if(_orig.gridParams.find(itr->first) == _orig.gridParams.end()) itr->second = 0.;
+
+  gridParamStr = _orig.gridParamStr;
+  pdfWeights = _orig.pdfWeights;
 }
 
 

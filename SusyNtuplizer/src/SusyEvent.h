@@ -1035,6 +1035,8 @@ namespace susy {
     PUSummaryInfoCollection                        pu;                     // PU summary info
     ParticleCollection                             genParticles;
     std::map<TString, Float_t>                     gridParams;             // pairs of parameter name and value
+    std::vector<std::string>                           gridParamStr;
+    std::map<TString, std::vector<double> >        pdfWeights;
 
   private:
     // Keep a pointer to each tree that is bound to this object. Only one input tree is supported.
