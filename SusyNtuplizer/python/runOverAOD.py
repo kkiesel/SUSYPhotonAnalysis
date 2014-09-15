@@ -858,7 +858,7 @@ def configure( dataset, sourceNames=[], hltPaths=[], maxEvents = -1, outputName 
     ###################################################################
     ### PDF weights ###
     ###################################################################
-    process.pdfWeightsCT10 = cms.EDProducer("PdfWeightProducer",
+    """process.pdfWeightsCT10 = cms.EDProducer("PdfWeightProducer",
           # Fix POWHEG if buggy (this PDF set will also appear on output,
           # so only two more PDF sets can be added in PdfSetNames if not "")
           #FixPOWHEG = cms.untracked.string("cteq66.LHgrid"),
@@ -882,6 +882,7 @@ def configure( dataset, sourceNames=[], hltPaths=[], maxEvents = -1, outputName 
              "NNPDF23_nnlo_as_0119.LHgrid"
           )
     )
+    """
 
 
 
@@ -961,10 +962,10 @@ def configure( dataset, sourceNames=[], hltPaths=[], maxEvents = -1, outputName 
         process.newJetBtagging +
         process.chsJetBtagging +
         process.QGTaggingSequence +
-        process.metFiltersSequence +
-        process.pdfWeightsCT10 +
-        process.pdfWeightsMSTW2008 +
-        process.pdfWeightsNNPDF
+        process.metFiltersSequence
+        #process.pdfWeightsCT10 +
+        #process.pdfWeightsMSTW2008 +
+        #process.pdfWeightsNNPDF
     )
 
     process.optional_step = cms.Path(

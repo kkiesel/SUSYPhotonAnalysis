@@ -790,7 +790,7 @@ SusyNtuplizer::analyze(edm::Event const& _event, edm::EventSetup const& _eventSe
 
   if(debugLevel_ > 0) edm::LogInfo(name()) << "analyze: fill event info" << std::endl;
 
-  // extract grid information
+/*  // extract grid information
   edm::Handle<LHEEventProduct> lheHandle;
   if( _event.getByLabel( "source",lheHandle)) {
     for(LHEEventProduct::comments_const_iterator itr(lheHandle->comments_begin()); itr != lheHandle->comments_end(); ++itr) {
@@ -811,6 +811,7 @@ SusyNtuplizer::analyze(edm::Event const& _event, edm::EventSetup const& _eventSe
 			 edm::LogWarning( "Could not find pdf" ) << *it;
 		 }
 }
+*/
 
   susyEvent_->isRealData = _event.isRealData() ? 1 : 0;
   susyEvent_->runNumber = _event.id().run();
