@@ -858,35 +858,8 @@ def configure( dataset, sourceNames=[], hltPaths=[], maxEvents = -1, outputName 
     ###################################################################
     ### PDF weights ###
     ###################################################################
-    """process.pdfWeightsCT10 = cms.EDProducer("PdfWeightProducer",
-          # Fix POWHEG if buggy (this PDF set will also appear on output,
-          # so only two more PDF sets can be added in PdfSetNames if not "")
-          #FixPOWHEG = cms.untracked.string("cteq66.LHgrid"),
-          #GenTag = cms.untracked.InputTag("genParticles"),
-          PdfInfoTag = cms.untracked.InputTag("generator"),
-          PdfSetNames = cms.untracked.vstring(
-             "CT10.LHgrid"
-             #"MSTW2008nnlo68cl.LHgrid"
-             #"NNPDF23_nnlo_as_0117.LHgrid"
-          )
-    )
-    process.pdfWeightsMSTW2008 = cms.EDProducer("PdfWeightProducer",
-          PdfInfoTag = cms.untracked.InputTag("generator"),
-          PdfSetNames = cms.untracked.vstring(
-             "MSTW2008nnlo68cl.LHgrid"
-          )
-    )
-    process.pdfWeightsNNPDF = cms.EDProducer("PdfWeightProducer",
-          PdfInfoTag = cms.untracked.InputTag("generator"),
-          PdfSetNames = cms.untracked.vstring(
-             "NNPDF23_nnlo_as_0119.LHgrid"
-          )
-    )
-    """
 
-
-
-
+    process.susyNtuplizer.gridParams = cms.vstring( "pdf_x1", "pdf_x2", "pdf_scale", "pdf_id1", "pdf_id2" )
 
     ###################################################################
     ### Dataset-dependent sequence and event content configurations ###
@@ -963,9 +936,6 @@ def configure( dataset, sourceNames=[], hltPaths=[], maxEvents = -1, outputName 
         process.chsJetBtagging +
         process.QGTaggingSequence +
         process.metFiltersSequence
-        #process.pdfWeightsCT10 +
-        #process.pdfWeightsMSTW2008 +
-        #process.pdfWeightsNNPDF
     )
 
     process.optional_step = cms.Path(

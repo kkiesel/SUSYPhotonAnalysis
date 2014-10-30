@@ -790,29 +790,6 @@ SusyNtuplizer::analyze(edm::Event const& _event, edm::EventSetup const& _eventSe
 
   if(debugLevel_ > 0) edm::LogInfo(name()) << "analyze: fill event info" << std::endl;
 
-/*  // extract grid information
-  edm::Handle<LHEEventProduct> lheHandle;
-  if( _event.getByLabel( "source",lheHandle)) {
-    for(LHEEventProduct::comments_const_iterator itr(lheHandle->comments_begin()); itr != lheHandle->comments_end(); ++itr) {
-			susyEvent_->gridParamStr.push_back( *itr );
-    }
-  }
-	std::vector<std::string> pdfweightstrings;
-	pdfweightstrings.push_back("pdfWeightsCT10:CT10");
-	pdfweightstrings.push_back("pdfWeightsMSTW2008:MSTW2008nnlo68cl");
-	pdfweightstrings.push_back("pdfWeightsNNPDF:NNPDF23");
-
-	for( std::vector<std::string>::const_iterator it = pdfweightstrings.begin(); it != pdfweightstrings.end(); ++it ) {
-     edm::InputTag pdfWeightTag( *it );
-     edm::Handle<std::vector<double> > weightHandle;
-     if( _event.getByLabel(pdfWeightTag, weightHandle) ) {
-       susyEvent_->pdfWeights[ *it ] = (std::vector<double>) (*weightHandle);
-		 } else {
-			 edm::LogWarning( "Could not find pdf" ) << *it;
-		 }
-}
-*/
-
   susyEvent_->isRealData = _event.isRealData() ? 1 : 0;
   susyEvent_->runNumber = _event.id().run();
   susyEvent_->eventNumber = _event.id().event();
@@ -1182,10 +1159,24 @@ SusyNtuplizer::fillGenInfo(edm::Event const& _event, edm::EventSetup const&)
    */
   /*--------------*/
   edm::Handle<GenEventInfoProduct> GenEventInfoHandle;
-  if(_event.getByLabel("generator", GenEventInfoHandle) && GenEventInfoHandle->binningValues().size() > 0)
-    susyEvent_->gridParams["ptHat"] = GenEventInfoHandle->binningValues()[0];
+  if(_event.getByLabel("generator", GenEventInfoHandle) ) {
+    if( GenEventInfoHandle->binningValues().size() > 0) {
+      susyEvent_->gridParams["ptHat"] = GenEventInfoHandle->binningValues()[0];
+    }
+    susyEvent_->gridParams["pdf_x1"] = GenEventInfoHandle->pdf()->x.first;
+    susyEvent_->gridParams["pdf_x2"] = GenEventInfoHandle->pdf()->x.second;
+    susyEvent_->gridParams["pdf_scale"] = GenEventInfoHandle->pdf()->scalePDF;
+    susyEvent_->gridParams["pdf_id1"] = GenEventInfoHandle->pdf()->id.first;
+    susyEvent_->gridParams["pdf_id2"] = GenEventInfoHandle->pdf()->id.second;
+  }
 
-  /*--------------*/
+  // extract grid information
+  edm::Handle<LHEEventProduct> lheHandle;
+  if( _event.getByLabel( "source",lheHandle)) {
+    for(LHEEventProduct::comments_const_iterator itr(lheHandle->comments_begin()); itr != lheHandle->comments_end(); ++itr) {
+      susyEvent_->gridParamStr.push_back( *itr );
+    }
+  }
 
   //get PU summary info
   edm::Handle<std::vector<PileupSummaryInfo> > pPUSummaryInfo;
